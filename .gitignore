@@ -1,0 +1,31 @@
+# Dependencias
+node_modules/
+backend/node_modules/
+frontend/node_modules/
+terminal_almacen/target/
+
+# Output de compilación
+dist/
+backend/dist/
+frontend/dist/
+
+# Variables de entorno (¡NUNCA subir credenciales!)
+.env
+
+# Logs
+*.log
+npm-debug.log*
+
+# Archivos del sistema
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docker volumes (si los hubiera)
+*.data

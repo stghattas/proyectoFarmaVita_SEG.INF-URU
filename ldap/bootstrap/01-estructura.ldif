@@ -1,0 +1,23 @@
+# Unidad Organizativa: Almacén Central
+dn: ou=almacen,dc=farmaceutica,dc=local
+objectClass: organizationalUnit
+ou: almacen
+
+# Unidad Organizativa: Laboratorio de Calidad
+dn: ou=laboratorio,dc=farmaceutica,dc=local
+objectClass: organizationalUnit
+ou: laboratorio
+
+# Usuario de prueba: Almacenista
+dn: cn=almacenista1,ou=almacen,dc=farmaceutica,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+cn: almacenista1
+sn: Perez
+uid: almacenista1
+uidNumber: 10001
+gidNumber: 10001
+homeDirectory: /home/almacenista1
+loginShell: /bin/bash
+userPassword: password_almacen_123

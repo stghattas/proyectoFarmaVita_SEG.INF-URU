@@ -1,0 +1,204 @@
+services:
+  # ==========================================
+  # 0. FIREWALL PERIMETRAL (El Router Central)
+  # ==========================================
+  fw-01:
+    build: ./firewall
+    container_name: fw-01
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    sysctls:
+      - net.ipv4.ip_forward=1
+    networks:
+      red_dmz: { ipv4_address: 10.10.20.254 }
+      red_apps: { ipv4_address: 10.10.30.254 }
+      red_datos: { ipv4_address: 10.10.40.254 }
+      vlan210_almacen: { ipv4_address: 10.10.210.254 }
+      vlan220_ventas: { ipv4_address: 10.10.220.254 }
+      vlan230_admin: { ipv4_address: 10.10.230.254 }
+      vlan240_laboratorio: { ipv4_address: 10.10.240.254 }
+    restart: unless-stopped
+
+  # ==========================================
+  # 1. ZONA DE DATOS (Aislamiento Máximo)
+  # ==========================================
+  farma_db:
+    image: postgres:15-alpine
+    container_name: farma_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: farma_segura_2026
+      POSTGRES_DB: farmaceutica_db
+    networks:
+      red_datos: { ipv4_address: 10.10.40.10 }
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  # ==========================================
+  # 2. ZONA DE APLICACIONES E IDENTIDAD
+  # ==========================================
+  farma_ldap:
+    image: osixia/openldap:1.5.0
+    container_name: farma_ldap
+    environment:
+      LDAP_ORGANISATION: "Farmaceutica"
+      LDAP_DOMAIN: "farmaceutica.local"
+      LDAP_ADMIN_PASSWORD: "farma_admin_password"
+      LDAP_REMOVE_CONFIG_AFTER_SETUP: "false"
+    networks:
+      red_apps: { ipv4_address: 10.10.30.10 }
+    volumes:
+      - ./ldap/bootstrap:/container/service/slapd/assets/config/bootstrap/ldif/custom
+    restart: unless-stopped
+
+  farma_core:
+    build:
+      context: ./backend
+    container_name: farma_core
+    environment:
+      - DB_HOST=10.10.40.10
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=farma_segura_2026
+      - POSTGRES_DB=farmaceutica_db
+      - LDAP_URL=ldap://10.10.30.10:389
+      - JWT_SECRET=FarmaSecret_SuperSeguro_2026
+    networks:
+      red_apps: { ipv4_address: 10.10.30.20 }
+      red_datos: { ipv4_address: 10.10.40.20 }
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    restart: unless-stopped
+
+  farma_frontend:
+    build:
+      context: ./frontend
+    container_name: farma_frontend
+    networks:
+      red_apps: { ipv4_address: 10.10.30.30 }
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    restart: unless-stopped
+
+  # ==========================================
+  # 3. ZONA DMZ / PROXY PERIMETRAL
+  # ==========================================
+  farma_proxy:
+    image: nginx:alpine
+    container_name: farma_proxy
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      red_dmz: { ipv4_address: 10.10.20.10 }
+      red_apps: { ipv4_address: 10.10.30.253 }
+      vlan210_almacen: { ipv4_address: 10.10.210.253 }
+      vlan220_ventas: { ipv4_address: 10.10.220.253 }
+      vlan230_admin: { ipv4_address: 10.10.230.253 }
+      vlan240_laboratorio: { ipv4_address: 10.10.240.253 }
+    volumes:
+      - ./proxy/nginx.conf:/etc/nginx/nginx.conf:ro
+    restart: unless-stopped
+
+  # ==========================================
+  # 4. SIMULACIÓN DE OFICINAS (PCs Físicas)
+  # ==========================================
+  pc_almacen_01:
+    image: alpine:latest
+    container_name: pc_almacen_01
+    cap_add:
+      - NET_ADMIN
+    command: sh -c "ip route replace default via 10.10.210.254 && sleep infinity"
+    tty: true
+    networks:
+      vlan210_almacen: { ipv4_address: 10.10.210.10 }
+
+  pc_ventas_01:
+    image: alpine:latest
+    container_name: pc_ventas_01
+    cap_add:
+      - NET_ADMIN
+    command: sh -c "ip route replace default via 10.10.220.254 && sleep infinity"
+    tty: true
+    networks:
+      vlan220_ventas: { ipv4_address: 10.10.220.10 }
+
+  pc_admin_01:
+    image: alpine:latest
+    container_name: pc_admin_01
+    cap_add:
+      - NET_ADMIN
+    command: sh -c "ip route replace default via 10.10.230.254 && sleep infinity"
+    tty: true
+    networks:
+      vlan230_admin: { ipv4_address: 10.10.230.10 }
+
+  pc_laboratorio_01:
+    image: alpine:latest
+    container_name: pc_laboratorio_01
+    cap_add:
+      - NET_ADMIN
+    command: sh -c "ip route replace default via 10.10.240.254 && sleep infinity"
+    tty: true
+    networks:
+      vlan240_laboratorio: { ipv4_address: 10.10.240.10 }
+
+# ==========================================
+# DEFINICIÓN DE REDES LÓGICAS (VLANs)
+# ==========================================
+networks:
+  red_dmz:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.10.20.0/24
+          gateway: 10.10.20.1
+  red_apps:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.10.30.0/24
+          gateway: 10.10.30.1
+  red_datos:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.10.40.0/24
+          gateway: 10.10.40.1
+  vlan210_almacen:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.10.210.0/24
+          gateway: 10.10.210.1
+  vlan220_ventas:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.10.220.0/24
+          gateway: 10.10.220.1
+  vlan230_admin:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.10.230.0/24
+          gateway: 10.10.230.1
+  vlan240_laboratorio:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.10.240.0/24
+          gateway: 10.10.240.1
+
+volumes:
+  db_data:
